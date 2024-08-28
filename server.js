@@ -38,3 +38,13 @@ app.get('/check/:fileContent', (req, res) => {
         res.status(500).send(`An error occurred: ${error.message}`);
     }
 });
+
+app.get('/format/:fileContent', (req, res) => {
+    try {
+        const fileContent = decodeURIComponent(req.params.fileContent);
+        const formattedContent = linter.format(linter.parse(fileContent));
+        res.send(formattedContent);
+    } catch (error) {
+        res.status(500).send(`An error occurred: ${error.message}`);
+    }
+});
