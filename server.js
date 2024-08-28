@@ -42,8 +42,16 @@ app.get('/check/:fileContent', (req, res) => {
 app.get('/format/:fileContent', (req, res) => {
     try {
         const fileContent = decodeURIComponent(req.params.fileContent);
-        const formattedContent = linter.format(linter.parse(fileContent));
-        res.send(formattedContent);
+        const tempFilePath = path.join(os.tmpdir(), 'temp-file.md');
+        fs.writeFileSync(tempFilePath, fileContent);
+
+        const linterResult = linter.processFile(tempFilePath, true, true, false);
+
+        if (linterResult.formatted) {
+            res.send(linterResult.formatted);
+        } else {
+            res.status(500).send('Formatting error: No formatted content available.');
+        }
     } catch (error) {
         res.status(500).send(`An error occurred: ${error.message}`);
     }

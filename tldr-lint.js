@@ -27,6 +27,7 @@ module.exports.ERRORS = parser.ERRORS = {
     'TLDR019': 'Page should only include a maximum of 8 examples',
     'TLDR020': 'Label for additional notes should be spelled exactly `Note: `',
     'TLDR021': 'Command example should not begin or end in whitespace',
+
     'TLDR101': 'Command description probably not properly annotated',
     'TLDR102': 'Example description probably not properly annotated',
     'TLDR103': 'Command example is missing its closing backtick',
@@ -40,22 +41,22 @@ module.exports.ERRORS = parser.ERRORS = {
 };
 
 (function (parser) {
+    // Prepares state for a single page. Should be called before a run.
     parser.init = function () {
         this.yy.errors = [];
         this.yy.page = {
-            description: [],
+            description: [],    // can be multiple lines
             informationLink: [],
             examples: []
         };
     };
+    parser.finish = function () {
 
-    parser.finish = function () { };
-
+    };
     parser.yy.ERRORS = parser.ERRORS;
-
     parser.yy.error = function (location, error) {
         if (!parser.ERRORS[error]) {
-            throw new Error('Linter error: \'' + error + '\' does not exist.');
+            throw new Error('Linter done goofed. \'' + error + '\' does not exist.');
         }
         parser.yy.errors.push({
             locinfo: location,
@@ -63,40 +64,37 @@ module.exports.ERRORS = parser.ERRORS = {
             description: parser.ERRORS[error]
         });
     };
-
     parser.yy.setTitle = function (title) {
         parser.yy.page.title = title;
     };
-
     parser.yy.addDescription = function (description) {
         parser.yy.page.description.push(description);
     };
-
     parser.yy.addInformationLink = function (url) {
         parser.yy.page.informationLink.push(url);
     };
-
     parser.yy.addExample = function (description, commands) {
+        // Ensure commands is an array
+        if (!Array.isArray(commands)) {
+            commands = [commands];
+        }
         parser.yy.page.examples.push({
             description: description,
             commands: commands
         });
     };
-
     parser.yy.createToken = function (token) {
         return {
             type: 'token',
             content: token
         };
     };
-
     parser.yy.createCommandText = function (text) {
         return {
             type: 'text',
             content: text
         };
     };
-
     parser.yy.initLexer = function (lexer) {
         lexer.pushState = function (key, condition) {
             if (!condition) {
@@ -158,9 +156,14 @@ linter.format = function (parsedPage) {
         str += '\n\n';
         example.commands.forEach(function (command) {
             str += '`';
-            command.forEach(function (textOrToken) {
-                str += textOrToken.type === 'token' ? util.format('{{%s}}', textOrToken.content) : textOrToken.content;
-            });
+            if (Array.isArray(command)) {
+                command.forEach(function (textOrToken) {
+                    str += textOrToken.type === 'token' ? util.format('{{%s}}', textOrToken.content) : textOrToken.content;
+                });
+            } else {
+                // Handle the case where command is not an array
+                str += command;
+            }
             str += '`\n';
         });
     });
@@ -173,16 +176,14 @@ linter.process = function (file, page, verbose, alsoFormat) {
         linter.parse(page);
         success = true;
     } catch (err) {
-        result = {
-            page: {},
-            errors: [{
-                locinfo: { first_line: 0 },
-                code: 'PARSING_ERROR',
-                description: err.message
-            }],
-            success: false
-        };
-        return result;
+        console.error(`${file}:`);
+        console.error(err.toString());
+        success = false;
+    }
+    if (verbose) {
+        console.log(parser.yy.page.description.length + ' line(s) of description');
+        console.log(parser.yy.page.examples.length + ' examples');
+        console.log(parser.yy.page.informationLink.length + ' link(s)');
     }
 
     result = {
@@ -192,25 +193,22 @@ linter.process = function (file, page, verbose, alsoFormat) {
     };
 
     if (parser.yy.page.examples.length > MAX_EXAMPLES) {
-        result.errors.push({ locinfo: { first_line: '0' }, code: 'TLDR019', description: this.ERRORS.TLDR019 });
+        result.errors.push({ locinfo: { first_line: '0' }, code: 'TLDR019', 'description': this.ERRORS.TLDR019 });
     }
 
-    if (alsoFormat) {
+    if (alsoFormat)
         result.formatted = linter.format(parser.yy.page);
-    }
 
     return result;
 };
 
 linter.processFile = function (file, verbose, alsoFormat, ignoreErrors) {
-    const pageContent = fs.readFileSync(file, 'utf8');
-    const result = linter.process(file, pageContent, verbose, alsoFormat);
-
+    const result = linter.process(file, fs.readFileSync(file, 'utf8'), verbose, alsoFormat);
     if (path.extname(file) !== '.md') {
         result.errors.push({ locinfo: { first_line: '0' }, code: 'TLDR107', description: this.ERRORS.TLDR107 });
     }
 
-    if (/\s/.test(path.basename(file))) {
+    if (RegExp(/\s/).test(path.basename(file))) {
         result.errors.push({ locinfo: { first_line: '0' }, code: 'TLDR108', description: this.ERRORS.TLDR108 });
     }
 
@@ -219,8 +217,12 @@ linter.processFile = function (file, verbose, alsoFormat, ignoreErrors) {
     }
 
     if (ignoreErrors) {
-        ignoreErrors = ignoreErrors.split(',').map(val => val.trim());
-        result.errors = result.errors.filter(error => !ignoreErrors.includes(error.code));
+        ignoreErrors = ignoreErrors.split(',').map(function (val) {
+            return val.trim();
+        });
+        result.errors = result.errors.filter(function (error) {
+            return !ignoreErrors.includes(error.code);
+        });
     }
 
     return result;
