@@ -1,3 +1,7 @@
+const linter = require('./tldr-lint.js');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const express = require('express');
 const app = express();
 
@@ -13,5 +17,21 @@ app.get('/', (req, res) => {
 
 app.get('/check/:fileContent', (req, res) => {
     const fileContent = decodeURIComponent(req.params.fileContent);
-    res.send(fileContent);
+
+    const tempFilePath = path.join(os.tmpdir(), 'temp-file.md');
+    fs.writeFileSync(tempFilePath, fileContent);
+
+    const linterResult = linter.processFile(tempFilePath, true, false, []);
+
+    if (linterResult.errors.length > 0) {
+        const errorsText = linterResult.errors.map(error => {
+            return `Line ${error.locinfo.first_line || error.locinfo.last_line - 1}: ${error.code} - ${error.description}`;
+        }).join('\n');
+
+        res.send(errorsText);
+    } else {
+        res.send('No errors found');
+    }
+
+    fs.unlinkSync(tempFilePath);
 });
