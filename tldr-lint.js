@@ -1,3 +1,5 @@
+//Copyright (c) 2016 Ruben Vereecken
+//Copyright (c) 2016 - present The tldr-pages team and contributors
 const fs = require('fs');
 const path = require('path');
 const parser = require('./tldr-parser.js').parser;
